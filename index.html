@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>约会餐厅推荐神器</title>
+    <link rel="stylesheet" href="css/style.css">
+    <link href="https://api.mapbox.com/mapbox-gl-js/v2.15.0/mapbox-gl.css" rel="stylesheet" />
+    <script src="https://api.mapbox.com/mapbox-gl-js/v2.15.0/mapbox-gl.js"></script>
+</head>
+<body>
+    <header>
+        <h1>破解"随便"困局的约会餐厅推荐工具</h1>
+        <p>智能分析 × 情感化设计，帮你高效决策</p>
+    </header>
+    <main>
+        <section id="recommend-section">
+            <div id="filter-bar">
+                <select id="price-filter">
+                    <option value="">全部价位</option>
+                    <option value="💵经济">💵经济</option>
+                    <option value="💰适中">💰适中</option>
+                    <option value="💎高端">💎高端</option>
+                </select>
+                <select id="tag-filter">
+                    <option value="">全部标签</option>
+                    <option value="🌹浪漫露台">🌹浪漫露台</option>
+                    <option value="🎻Live音乐">🎻Live音乐</option>
+                    <option value="📸网红墙">📸网红墙</option>
+                    <option value="首次约会安全牌">首次约会安全牌</option>
+                    <option value="惊喜模式">惊喜模式</option>
+                </select>
+                <button id="lottery-btn">难以选择？抽一家！</button>
+            </div>
+            <h2>今日推荐</h2>
+            <div id="recommend-list"></div>
+        </section>
+        <section id="map-section">
+            <h2>情侣足迹热力图</h2>
+            <div id="map" style="height: 400px;"></div>
+        </section>
+    </main>
+    <script src="js/main.js"></script>
+</body>
+</html> 
