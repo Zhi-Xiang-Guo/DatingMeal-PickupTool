@@ -18,18 +18,32 @@ function getDistance(lat1, lon1, lat2, lon2) {
     return R * c;
 }
 
+// 新增：调用高德API获取附近餐厅
+async function fetchAmapNearbyRestaurants(lon, lat) {
+    const url = 'https://mcp.amap.com/sse?key=09ca991219dbcab8ad33ddbe8f2613dd';
+    const body = {
+        keywords: '餐厅',
+        location: `${lon},${lat}`,
+        radius: 2000 // 2公里
+    };
+    const res = await fetch(url, {
+        method: 'POST',
+        body: JSON.stringify(body),
+        headers: { 'Content-Type': 'application/json' }
+    });
+    const data = await res.json();
+    // 假设返回结构为data.pois
+    return data.pois || [];
+}
+
 document.addEventListener('DOMContentLoaded', function() {
-    getUserLocation(function(userLoc) {
+    getUserLocation(async function(userLoc) {
         window.userLocation = userLoc;
-        fetch('data/restaurants.json')
-            .then(res => res.json())
-            .then(data => {
-                // 增加更多牛逼的餐厅
-                restaurants = data.concat(extraRestaurants());
-                bindFilterEvents();
-                loadRecommendations(userLoc);
-                initMap(userLoc);
-            });
+        // 直接用高德API获取餐厅
+        restaurants = await fetchAmapNearbyRestaurants(userLoc.lng, userLoc.lat);
+        bindFilterEvents();
+        loadRecommendations(userLoc);
+        initMap(userLoc);
     });
 });
 
@@ -73,18 +87,20 @@ function loadRecommendations(userLoc) {
     const tag = document.getElementById('tag-filter').value;
     filteredRestaurants = restaurants.filter(r => {
         let ok = true;
-        if (price && r.price_level !== price) ok = false;
+        if (price && r.per_capita && (r.per_capita < 200 || r.per_capita > 1000)) ok = false;
         if (tag && !(r.tags.includes(tag) || (r.scene && r.scene.includes(tag)))) ok = false;
         return ok;
     });
     // 计算距离
     filteredRestaurants.forEach(r => {
-        r.distance = getDistance(userLoc.lat, userLoc.lng, r.lat, r.lng);
+        let lat = r.location ? r.location.lat : r.lat;
+        let lng = r.location ? r.location.lon : r.lng;
+        r.distance = getDistance(userLoc.lat, userLoc.lng, lat, lng);
     });
     // 黄金公式排序：(评分×0.6) + (环境系数×0.3) - (价格系数×0.1) + 距离加权
     filteredRestaurants.sort((a, b) => {
-        const aScore = a.rating * 0.6 + (a.tags.length + (a.scene?a.scene.length:0)) * 0.3 - (a.avg_price/100) * 0.1 - a.distance/20000;
-        const bScore = b.rating * 0.6 + (b.tags.length + (b.scene?b.scene.length:0)) * 0.3 - (b.avg_price/100) * 0.1 - b.distance/20000;
+        const aScore = a.rating * 0.6 + (a.tags.length + (a.scene?a.scene.length:0)) * 0.3 - (a.per_capita/100) * 0.1 - a.distance/20000;
+        const bScore = b.rating * 0.6 + (b.tags.length + (b.scene?b.scene.length:0)) * 0.3 - (b.per_capita/100) * 0.1 - b.distance/20000;
         return bScore - aScore;
     });
     renderRecommendList();
@@ -97,26 +113,29 @@ function renderRecommendList() {
         recommendList.innerHTML = '<p>没有符合条件的餐厅。</p>';
         return;
     }
-    recommendList.innerHTML = filteredRestaurants.map(r => `
+    recommendList.innerHTML = filteredRestaurants.map(r => {
+        // 假设API图片字段为photos[0].url
+        const img = r.photos && r.photos.length ? r.photos[0].url : 'default.jpg';
+        const price = r.per_capita || r.price || '暂无';
+        const rating = r.rating || '暂无';
+        const phone = r.tel || '暂无';
+        const amapUrl = r.location ? `https://uri.amap.com/marker?position=${r.location.lon},${r.location.lat}&name=${encodeURIComponent(r.name)}` : '#';
+        return `
         <div class="restaurant-card" id="rest-${r.id}">
-            <h3>${r.name} <span class="price">${r.price_level}</span></h3>
-            <div class="tags">${[...(r.tags||[]),...(r.scene||[]),...(r.seasonal||[])].map(t=>`<span>${t}</span>`).join(' ')}</div>
+            <img src="${img}" alt="${r.name}" />
+            <h3>${r.name}</h3>
             <div class="info">
-                <span>评分：${r.rating} (${r.review_count}条)</span>
-                <span>人均：¥${r.avg_price}</span>
+                <span>人均：¥${price}</span>
+                <span>评分：${rating}</span>
                 <span>距离：${r.distance<1000?Math.round(r.distance)+'m':(r.distance/1000).toFixed(1)+'km'}</span>
             </div>
-            <div class="comments">
-                <b>情侣评价：</b>
-                <ul>${r.comments.slice(0,3).map(c=>`<li>“${c}”</li>`).join('')}</ul>
-            </div>
             <div class="extra">
-                <span>成功率：${Math.round(r.success_rate*100)}%</span>
-                <span>${r.wait_warning||''}</span>
-                ${r.has_socket?'<span>附近有插座</span>':''}
+                <span>电话：${phone}</span>
+                <a href="${amapUrl}" target="_blank">高德地图详情/导航</a>
             </div>
         </div>
-    `).join('');
+        `;
+    }).join('');
 }
 
 function highlightLottery(id) {
@@ -149,14 +168,15 @@ function initMap(userLoc) {
 
 function updateMapMarkers() {
     if (!mapInstance) return;
-    // 先移除旧的marker
     if (mapInstance.restaurantMarkers) {
         mapInstance.restaurantMarkers.forEach(m=>m.remove());
     }
     mapInstance.restaurantMarkers = [];
     filteredRestaurants.forEach(r => {
+        let lat = r.location ? r.location.lat : r.lat;
+        let lng = r.location ? r.location.lon : r.lng;
         const marker = new mapboxgl.Marker()
-            .setLngLat([r.lng, r.lat])
+            .setLngLat([lng, lat])
             .setPopup(new mapboxgl.Popup().setText(r.name))
             .addTo(mapInstance);
         mapInstance.restaurantMarkers.push(marker);
